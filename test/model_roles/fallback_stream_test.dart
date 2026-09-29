@@ -578,6 +578,38 @@ void main() {
         expect(notices.single.kind, FallbackNoticeKind.modelFallback);
       },
     );
+    test(
+      'sole chain entry waits out transient minute rate limit exceeding maxWait instead of immediate exhaustion',
+      () async {
+        final a = _model('dial', 'gemini-3.8-flash');
+        final probe = _Probe({
+          'v-a': [
+            _rateLimitTurn(
+              a,
+              retryAfter: const Duration(seconds: 60),
+              error: '429: Hit token rate limit. Minute limit: 151912 / 120000 tokens.',
+            ),
+            _okTurn(a, 'turn succeeded after minute window reset'),
+          ],
+        });
+        final w = wrapper(
+          [entry(probe, a, ['v-a'])],
+          policy: const ModelRolesRetryPolicy(
+            retriesPerEntry: 3,
+            maxWait: Duration(seconds: 30), // maxWait shorter than 60s
+          ),
+        );
+
+        final events = await run(w);
+
+        expect(probe.calls, ['v-a', 'v-a']);
+        expect(sleeps, [const Duration(seconds: 60)]);
+        expect(events.last, 'done:${a.id}');
+        expect(notices.single.kind, FallbackNoticeKind.retry);
+        expect(notices.single.describe(), contains('retrying in 60.0s'));
+      },
+    );
+
 
     test('single-key exhaustion ends with the all-rate-limited path', () async {
       final a = _model('openai', 'gpt-a');

@@ -936,7 +936,12 @@ final class FallbackStreamFunction {
         state.lastFailure?.retryAfter,
       );
     }
-    if (wait > policy.maxWait) {
+    final waitLimit = _hasAvailableFallback(state.entryIndex, state.tried)
+        ? policy.maxWait
+        : (policy.maxWait > const Duration(minutes: 2)
+            ? policy.maxWait
+            : const Duration(minutes: 2));
+    if (wait > waitLimit) {
       return _failOver(out, state);
     }
     final lastFailure = state.lastFailure;
@@ -998,7 +1003,12 @@ final class FallbackStreamFunction {
       return _failOver(out, state);
     }
     final delay = _retryDelay(state.attemptsOnEntry + 1, outcome.retryAfter);
-    if (delay > policy.maxWait) {
+    final waitLimit = _hasAvailableFallback(state.entryIndex, state.tried)
+        ? policy.maxWait
+        : (policy.maxWait > const Duration(minutes: 2)
+            ? policy.maxWait
+            : const Duration(minutes: 2));
+    if (delay > waitLimit) {
       return _failOver(out, state);
     }
     return _sleepAndRetry(
@@ -1010,6 +1020,18 @@ final class FallbackStreamFunction {
       isTransport: outcome.isTransport,
     );
   }
+  /// Whether another entry in the chain is available to take over (not
+  /// already tried this call and not currently in cooldown).
+  bool _hasAvailableFallback(int from, Set<int> tried) {
+    for (var index = 0; index < _entries.length; index++) {
+      if (index == from) continue;
+      if (tried.contains(index)) continue;
+      if (isInCooldown(index)) continue;
+      return true;
+    }
+    return false;
+  }
+
 
   /// Picks the next chain entry after [from], skipping entries already tried
   /// in this call and entries in cooldown; marks [from]'s cooldown. Returns
