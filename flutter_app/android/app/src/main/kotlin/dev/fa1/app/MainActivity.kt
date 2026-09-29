@@ -9,6 +9,7 @@ import android.util.Base64
 import android.view.WindowManager
 import dev.fa1.app.mobile.MobileChannels
 import dev.fa1.app.mobile.MobileProviders
+import dev.fa1.app.mobile.VoiceChannel
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -108,7 +109,7 @@ class MainActivity : FlutterActivity() {
         } else {
             MobileProviders(this)
         }
-        MobileChannels.register(messenger, mobileProviders)
+        MobileChannels.register(messenger, mobileProviders, this)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -195,5 +196,10 @@ class MainActivity : FlutterActivity() {
         Base64.decode(this, Base64.NO_WRAP)
     } catch (e: IllegalArgumentException) {
         null
+    }
+
+    override fun onDestroy() {
+        VoiceChannel.destroy()
+        super.onDestroy()
     }
 }
