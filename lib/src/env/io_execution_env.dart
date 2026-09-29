@@ -777,6 +777,15 @@ final class LocalShell implements Shell, BackgroundShell {
       // whole fa process. An awaited open turns every open-class failure
       // into this clean Err instead.
       logSink = await File(logPath).open(mode: FileMode.append);
+      // Restrict the log to owner-only (0600): job output can contain
+      // sensitive data (env vars, tokens echoed by commands). Best-effort —
+      // Windows and sandboxed environments without chmod are left as-is.
+      if (!Platform.isWindows) {
+        unawaited(
+          Process.run('chmod', ['600', logPath])
+              .catchError((_) => ProcessResult(0, 1, '', '')),
+        );
+      }
     } on Object catch (error) {
       process.kill();
       return Err(
