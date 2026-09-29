@@ -1295,6 +1295,19 @@ final class FaTuiModel extends Model {
       }
       return (copyWith(prompt: next), null);
     }
+    // When pasting into the composer with empty content or when the clipboard
+    // holds an image, probe the clipboard reader. An empty bracketed paste
+    // payload is typical when pasting an image from macOS/system clipboard.
+    final reader = callbacks.readClipboardImage;
+    if (content.isEmpty && reader != null) {
+      return (
+        this,
+        () async {
+          final read = await reader();
+          return PasteboardResultMsg(read);
+        },
+      );
+    }
     // One insert call = one undo group: a paste undoes as a whole.
     return (copyWith(editor: editor.insert(content)), null);
   }

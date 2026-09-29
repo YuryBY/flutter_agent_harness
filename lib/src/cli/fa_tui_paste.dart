@@ -53,7 +53,8 @@ extension FaTuiPaste on FaTuiModel {
   /// attach the image as a composer chip. Without a wired reader (or in
   /// prompt mode) this is a no-op — the prompt zone owns plain pastes.
   (Model, Cmd?)? _handlePasteImageKey(KeyMsg msg) {
-    if (msg.key != 'ctrl+v') return null;
+    final k = msg.key;
+    if (k != 'ctrl+v' && k != 'shift+insert' && k != 'paste') return null;
     final reader = callbacks.readClipboardImage;
     if (reader == null) {
       return (

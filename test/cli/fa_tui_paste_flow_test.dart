@@ -155,6 +155,46 @@ void main() {
     expect(model.attachments, hasLength(1), reason: 'slash keeps chips (E2)');
   });
 
+  test('bracketed paste with empty content attaches image when clipboard holds an image', () async {
+    var model = build(reader: () async => PasteboardImage(_png));
+    final (next, cmd) = model.update(PasteMsg(''));
+    model = next as FaTuiModel;
+    expect(cmd, isNotNull);
+    final followUp = await cmd?.call();
+    if (followUp != null) {
+      model = model.update(followUp).$1 as FaTuiModel;
+    }
+
+    expect(model.attachments, hasLength(1));
+    expect(model.attachments.first.chip, '[image: clipboard-1.png 12B]');
+  });
+
+  test('shift+insert with a wired reader attaches a chip', () async {
+    var model = build(reader: () async => PasteboardImage(_png));
+    final (next, cmd) = model.update(
+      KeyPressMsg(
+        const TeaKey(code: KeyCode.insert, modifiers: {KeyMod.shift}),
+      ),
+    );
+    model = next as FaTuiModel;
+    final followUp = await cmd?.call();
+    if (followUp != null) {
+      model = model.update(followUp).$1 as FaTuiModel;
+    }
+
+    expect(model.attachments, hasLength(1));
+    expect(model.attachments.first.chip, '[image: clipboard-1.png 12B]');
+  });
+
+  test('bracketed paste with plain text inserts text normally', () {
+    var model = build(reader: () async => PasteboardImage(_png));
+    final (next, cmd) = model.update(PasteMsg('pasted text'));
+    model = next as FaTuiModel;
+    expect(cmd, isNull);
+    expect(model.attachments, isEmpty);
+    expect(model.inputText, contains('pasted text'));
+  });
+
   test('a theme swap repaints without losing composer state', () {
     var model = build();
     model = model.update(const ThemeSwappedMsg()).$1 as FaTuiModel;
