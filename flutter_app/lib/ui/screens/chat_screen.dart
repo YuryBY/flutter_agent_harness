@@ -31,6 +31,7 @@ import 'package:fa/ui/widgets/chat_composer.dart';
 import 'package:fa/ui/widgets/fah_wallpaper.dart';
 import 'package:fa/ui/widgets/file_browser.dart';
 import 'package:fa/ui/widgets/media_player.dart';
+import 'package:fa/ui/widgets/voice_fab.dart';
 
 // The screen itself lives in the fa_ui package; these symbols stay
 // re-exported so existing imports of this path keep working.
@@ -319,9 +320,10 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     final service = widget.service;
-    return fa_ui.FaChatScreen(
+    final chatScreen = fa_ui.FaChatScreen(
       service: service,
       title: context.l10n.appTitle,
       dynamicWidgetTileBuilder: _buildDynamicTile,
@@ -397,6 +399,18 @@ class _ChatScreenState extends State<ChatScreen> {
       audioControllerFactory: widget.audioControllerFactory,
       wallpaperBuilder: (_) => const FahWallpaper(),
       videoControllerFactory: widget.videoControllerFactory,
+    );
+    // Android-only: overlay the voice FAB in the bottom-right corner.
+    // On all other platforms VoiceFab renders as SizedBox.shrink().
+    return Stack(
+      children: [
+        chatScreen,
+        const Positioned(
+          right: 16,
+          bottom: 88,
+          child: VoiceFab(),
+        ),
+      ],
     );
   }
 }
