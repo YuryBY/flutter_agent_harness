@@ -1,5 +1,6 @@
 package dev.fa1.app.mobile
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Handler
@@ -34,13 +35,13 @@ object MobileChannels {
     @Volatile
     private var providers: MobileProviders? = null
 
-    fun register(messenger: BinaryMessenger, providers: MobileProviders, context: Context, flavor: String = BuildConfig.FLAVOR) {
+    fun register(messenger: BinaryMessenger, providers: MobileProviders, activity: Activity, flavor: String = BuildConfig.FLAVOR) {
         this.providers = providers
         registerControl(messenger, providers, flavor)
         registerLaunch(messenger, providers)
         registerAutomation(messenger, providers)
         registerShell(messenger, providers)
-        VoiceChannel.register(messenger, context)
+        VoiceChannel.register(messenger, activity, activity)
     }
 
     /// MainActivity.onActivityResult forwards here; true = consumed by the

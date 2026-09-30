@@ -1,60 +1,63 @@
 package dev.fa1.app.mobile
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
 
-/// Voice channel: Android SpeechRecognizer (STT) + TextToSpeech (TTS)
-/// MethodChannel  : dev.fa1.app/voice
-/// EventChannel   : dev.fa1.app/voice_events  → {type, text} maps
-///
-/// Stop phrases: "стоп голос" / "выключи голос" disable listening without
-/// a Dart round-trip.
 object VoiceChannel {
     private const val METHOD_CH = "dev.fa1.app/voice"
     private const val EVENT_CH  = "dev.fa1.app/voice_events"
+    private const val MIC_REQUEST_CODE = 4242
 
     private var tts: TextToSpeech? = null
     private var stt: SpeechRecognizer? = null
     private var eventSink: EventChannel.EventSink? = null
     @Volatile private var voiceEnabled = false
+    private var activity: Activity? = null
 
-    fun register(messenger: BinaryMessenger, context: Context) {
-        // TTS — initialise once; prefer Russian locale, fall back to default
+    fun register(messenger: BinaryMessenger, context: Context, activity: Activity) {
+        this.activity = activity
+
         tts = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val ruRU = Locale("ru", "RU")
-                tts?.language = if (tts?.isLanguageAvailable(ruRU) == TextToSpeech.LANG_AVAILABLE
-                        || tts?.isLanguageAvailable(ruRU) == TextToSpeech.LANG_COUNTRY_AVAILABLE)
-                    ruRU else Locale.getDefault()
+                tts?.language = if (
+                    tts?.isLanguageAvailable(ruRU) == TextToSpeech.LANG_AVAILABLE ||
+                    tts?.isLanguageAvailable(ruRU) == TextToSpeech.LANG_COUNTRY_AVAILABLE
+                ) ruRU else Locale.getDefault()
             }
         }
 
-        // Event stream — STT results flow here
         EventChannel(messenger, EVENT_CH).setStreamHandler(
             object : EventChannel.StreamHandler {
-                override fun onListen(args: Any?, sink: EventChannel.EventSink) {
-                    eventSink = sink
-                }
-                override fun onCancel(args: Any?) {
-                    eventSink = null
-                }
+                override fun onListen(args: Any?, sink: EventChannel.EventSink) { eventSink = sink }
+                override fun onCancel(args: Any?) { eventSink = null }
             }
         )
 
-        // Method channel — control surface
         MethodChannel(messenger, METHOD_CH).setMethodCallHandler { call, result ->
             when (call.method) {
                 "startListening" -> {
                     if (!voiceEnabled) { result.success(false); return@setMethodCallHandler }
+                    if (!hasMicPermission(context)) {
+                        requestMicPermission()
+                        send("permission_required", "")
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
                     startStt(context)
                     result.success(true)
                 }
@@ -82,6 +85,20 @@ object VoiceChannel {
     fun destroy() {
         stt?.destroy();  stt = null
         tts?.shutdown(); tts = null
+        activity = null
+    }
+
+    private fun hasMicPermission(context: Context): Boolean =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun requestMicPermission() {
+        val act = activity ?: return
+        ActivityCompat.requestPermissions(
+            act,
+            arrayOf(Manifest.permission.RECORD_AUDIO),
+            MIC_REQUEST_CODE,
+        )
     }
 
     private fun startStt(context: Context) {
@@ -96,8 +113,17 @@ object VoiceChannel {
                 override fun onEvent(type: Int, p: Bundle?) {}
 
                 override fun onError(errorCode: Int) {
+                    // ERROR_INSUFFICIENT_PERMISSIONS (9) — stop the loop immediately
+                    if (errorCode == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ||
+                        !hasMicPermission(context)
+                    ) {
+                        voiceEnabled = false
+                        send("permission_required", errorCode.toString())
+                        requestMicPermission()
+                        return
+                    }
                     send("error", errorCode.toString())
-                    // auto-restart on recognizer errors if still enabled
+                    // auto-restart only for transient errors while still enabled
                     if (voiceEnabled) startStt(context)
                 }
 
@@ -118,7 +144,6 @@ object VoiceChannel {
                         return
                     }
                     send("result", text)
-                    // continuous mode: restart for next utterance
                     if (voiceEnabled) startStt(context)
                 }
             })
