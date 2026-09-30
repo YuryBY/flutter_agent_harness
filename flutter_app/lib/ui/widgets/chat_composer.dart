@@ -13,6 +13,7 @@ import 'package:fa/services/asr_service.dart';
 import 'package:fa/services/upload.dart';
 import 'package:fa/services/upload_picker_stub.dart'
     if (dart.library.html) 'package:fa/services/upload_picker_web.dart';
+import 'package:fa/services/android_stt_voice_input.dart';
 
 /// The chat composer: attachment chips + staging into the sandbox `uploads/`
 /// folder, the streaming/queued-steer indicators, the text field, the
@@ -106,11 +107,13 @@ class ChatComposer extends StatelessWidget {
       cameraPicker: (!kIsWeb && defaultTargetPlatform == TargetPlatform.macOS)
           ? null
           : () => _pickImage(ImageSource.camera),
-      voiceInput: _AsrVoiceInput(
-        service: service,
-        asr: asr,
-        transcriber: asrTranscriber,
-      ),
+      voiceInput: androidSttSupported
+          ? AndroidSttVoiceInput()
+          : _AsrVoiceInput(
+              service: service,
+              asr: asr,
+              transcriber: asrTranscriber,
+            ),
       clipboardImageReader: clipboardImageReader,
       dropBridge: dropBridge,
       leadingBuilder: leadingBuilder,
