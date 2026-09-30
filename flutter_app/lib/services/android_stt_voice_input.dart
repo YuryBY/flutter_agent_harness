@@ -13,21 +13,18 @@ import 'package:fa_ui/fa_ui.dart' show FaChatVoiceInput;
 /// Whether the Android Voice channel is available on this platform.
 bool get androidSttSupported => !kIsWeb && Platform.isAndroid;
 
-/// [FaChatVoiceInput] backed by the native Android SpeechRecognizer
-/// (`dev.fa1.app/voice` MethodChannel + `dev.fa1.app/voice_events`
-/// EventChannel).
+/// [FaChatVoiceInput] backed by the native Android SpeechRecognizer.
 ///
-/// The composer calls [start] → user speaks → [stopAndTranscribe] returns
-/// the recognised text directly from Android STT — no Whisper endpoint needed.
-///
-/// On non-Android platforms [isAvailable] is false so the composer hides
-/// the mic button via the normal [FaChatVoiceInput] contract.
+/// Fallback strategy: if Google returns ERROR_NO_MATCH or any error but
+/// we received partial results beforehand, we return the last partial text
+/// so the user's speech is never silently lost.
 final class AndroidSttVoiceInput implements FaChatVoiceInput {
   static const _method = MethodChannel('dev.fa1.app/voice');
   static const _events = EventChannel('dev.fa1.app/voice_events');
 
   Completer<String?>? _resultCompleter;
   StreamSubscription<dynamic>? _sub;
+  String? _lastPartial;
 
   @override
   bool get isAvailable => androidSttSupported;
@@ -38,14 +35,12 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
   @override
   Future<bool> start() async {
     if (!androidSttSupported) return false;
+    _lastPartial = null;
 
-    // Enable the channel and start a single-utterance listen.
     await _method.invokeMethod<void>('setVoiceEnabled', {'enabled': true});
     final ok = await _method.invokeMethod<bool>('startListening') ?? false;
     if (!ok) return false;
 
-    // Wire up the event stream — the completer resolves on the first
-    // result (or error) and the subscription is cancelled in cancel().
     _resultCompleter = Completer<String?>();
     _sub = _events.receiveBroadcastStream().listen(
       (dynamic raw) {
@@ -53,13 +48,19 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
         final type = raw['type']?.toString() ?? '';
         final text = raw['text']?.toString() ?? '';
         switch (type) {
+          case 'partial':
+            if (text.isNotEmpty) _lastPartial = text;
           case 'result':
+            final best = text.isNotEmpty ? text : _lastPartial;
             if (!(_resultCompleter?.isCompleted ?? true)) {
-              _resultCompleter!.complete(text.isEmpty ? null : text);
+              _resultCompleter!.complete(best);
             }
           case 'error':
+            // On any STT error fall back to the last partial so speech is
+            // not lost (e.g. ERROR_NO_MATCH when the recognizer times out
+            // after hearing speech but failing to finalise the transcript).
             if (!(_resultCompleter?.isCompleted ?? true)) {
-              _resultCompleter!.complete(null);
+              _resultCompleter!.complete(_lastPartial);
             }
           default:
             break;
@@ -67,7 +68,7 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
       },
       onError: (Object _) {
         if (!(_resultCompleter?.isCompleted ?? true)) {
-          _resultCompleter!.complete(null);
+          _resultCompleter!.complete(_lastPartial);
         }
       },
     );
@@ -77,12 +78,15 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
   @override
   Future<String?> stopAndTranscribe() async {
     if (!androidSttSupported) return null;
-    // Stop the recognizer — the native side fires a final 'result' event.
+    // If we already have a partial result, resolve immediately with it
+    // rather than waiting for a final 'result' event that may never come.
+    if (_lastPartial != null && !(_resultCompleter?.isCompleted ?? true)) {
+      _resultCompleter!.complete(_lastPartial);
+    }
     await _method.invokeMethod<void>('stopListening');
     await _method.invokeMethod<void>('setVoiceEnabled', {'enabled': false});
-    // Wait up to 5 s for the result event; timeout → null.
     final result = await _resultCompleter?.future
-        .timeout(const Duration(seconds: 5), onTimeout: () => null);
+        .timeout(const Duration(seconds: 5), onTimeout: () => _lastPartial);
     await _cleanup();
     return result;
   }
@@ -103,5 +107,6 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
     await _sub?.cancel();
     _sub = null;
     _resultCompleter = null;
+    _lastPartial = null;
   }
 }
