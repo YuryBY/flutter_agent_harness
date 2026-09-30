@@ -185,6 +185,9 @@ final class _AsrVoiceInput implements fa_ui.FaChatVoiceInput {
   String? get unavailableReason => null;
 
   @override
+  Stream<void>? get onShouldStop => null;
+
+  @override
   Future<bool> start() async {
     if (!await _asr.requestAccess()) return false;
     await _asr.startRecording();

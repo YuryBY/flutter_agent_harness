@@ -149,6 +149,7 @@ class ChatComposerState extends State<ChatComposer>
   /// Voice-input state: idle → recording → transcribing → idle.
   bool _micRecording = false;
   bool _micTranscribing = false;
+  StreamSubscription<void>? _shouldStopSub;
 
   /// Drives the red pulse of the recording-state mic button; runs only
   /// while recording (a repeating animation would keep `pumpAndSettle`
@@ -171,6 +172,11 @@ class ChatComposerState extends State<ChatComposer>
     _focusNode.addListener(_onFocusChange);
     // OS drops over the chat surface land here (issue #465).
     widget.dropBridge?.handler = _handleSurfaceDrop;
+    // Auto-stop mic when the backend fires a result (no second tap needed).
+    _shouldStopSub = _voiceInput?.onShouldStop?.listen((_) {
+      final vi = _voiceInput;
+      if (mounted && _micRecording && vi != null) _stopMic(vi);
+    });
     // Auto-focus the input when a session opens (first mount or switch).
     if (widget.autofocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -206,6 +212,7 @@ class ChatComposerState extends State<ChatComposer>
     _focusNode.dispose();
     widget.service.removeListener(_onServiceChanged);
     _textController.removeListener(_onTextChanged);
+    _shouldStopSub?.cancel();
     _micPulse.dispose();
     if (_micRecording) {
       // Best effort: never leave the native recorder running.

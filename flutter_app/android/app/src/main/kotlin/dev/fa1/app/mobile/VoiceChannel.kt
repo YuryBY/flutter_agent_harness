@@ -122,8 +122,9 @@ object VoiceChannel {
                     if (lower.contains("стоп голос") || lower.contains("выключи голос")) {
                         voiceEnabled = false; stt?.stopListening(); send("disabled", text); return
                     }
+                    // Stop after one result — the UI auto-stops via onShouldStop stream.
+                    voiceEnabled = false
                     send("result", text)
-                    if (voiceEnabled) startStt(context)
                 }
             })
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {

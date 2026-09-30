@@ -21,11 +21,17 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
   String? _lastPartial;
   String? _finalText;
 
+  // Fires when a final result arrives so the composer stops automatically.
+  final _shouldStopController = StreamController<void>.broadcast();
+
   @override
   bool get isAvailable => androidSttSupported;
 
   @override
   String? get unavailableReason => null;
+
+  @override
+  Stream<void> get onShouldStop => _shouldStopController.stream;
 
   @override
   Future<bool> start() async {
@@ -53,6 +59,8 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
             if (!(_resultCompleter?.isCompleted ?? true)) {
               _resultCompleter!.complete(best);
             }
+            // Signal the UI to stop recording automatically
+            _shouldStopController.add(null);
           case 'error':
             if (!(_resultCompleter?.isCompleted ?? true)) {
               _resultCompleter!.complete(_lastPartial);
@@ -73,7 +81,6 @@ final class AndroidSttVoiceInput implements FaChatVoiceInput {
   @override
   Future<String?> stopAndTranscribe() async {
     if (!androidSttSupported) return null;
-    // Resolve immediately if we already have a final or partial result
     final best = _finalText ?? _lastPartial;
     if (best != null && !(_resultCompleter?.isCompleted ?? true)) {
       _resultCompleter!.complete(best);

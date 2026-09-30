@@ -50,6 +50,11 @@ abstract interface class FaChatVoiceInput {
   /// disposed mid-take). Best effort: never leaves the native recorder
   /// running.
   Future<void> cancel();
+
+  /// Optional stream that fires when the backend has a complete result and
+  /// the UI should stop recording automatically (no second tap needed).
+  /// Null means the UI uses the default tap-to-stop behaviour.
+  Stream<void>? get onShouldStop => null;
 }
 
 /// Launches a js mini-app referenced by a tool result (fa-only feature).
